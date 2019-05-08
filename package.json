@@ -1,0 +1,67 @@
+{
+  "name": "jingtum-lib",
+  "version": "2.1.1",
+  "description": "jingtum lib",
+  "main": "index.js",
+  "browser": {
+    "ws": "./src/wswrapper.js"
+  },
+  "scripts": {
+    "eslint": "eslint index.js src/*.js",
+    "gulp": "gulp dev",
+    "gulp:production": "gulp production",
+    "build": "webpack",
+    "build:production": "webpack --config prod.webpack.config",
+    "dev": "webpack-dev-server",
+    "test": "mocha \"test/test*.js\"",
+    "test:extended": "mocha \"test/*.js\"",
+    "test:nyc": "nyc --reporter=html --reporter=text mocha test/test*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://git.jingtum.com/root/jingtum-lib.git"
+  },
+  "keywords": [
+    "jingtum",
+    "blockchain",
+    "lib"
+  ],
+  "author": "jingtum inc.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "bignumber.js": "^5.0.0",
+    "bn-plus.js": "^1.0.0",
+    "extend": "^3.0.0",
+    "jingtum-base-lib": "^1.2.1",
+    "lodash": "^4.17.2",
+    "lru-cache": "^4.0.1",
+    "sha1": "^1.1.1",
+    "tum3": "^0.1.2",
+    "tum3-eth-abi": "^1.0.2",
+    "url": "^0.11.0",
+    "utf8": "^2.1.2",
+    "websocket": "^1.0.28",
+    "ws": "^1.1.1"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "chai-json-schema": "^1.5.0",
+    "eslint": "^5.15.3",
+    "gulp": "^4.0.0",
+    "husky": "^1.3.1",
+    "jsbn": "^1.1.0",
+    "mocha": "^5.2.0",
+    "nyc": "^13.3.0",
+    "prettier": "^1.16.4",
+    "pretty-quick": "^1.10.0",
+    "sinon": "^7.2.4",
+    "webpack": "^4.29.3",
+    "webpack-cli": "^3.2.3",
+    "webpack-stream": "^5.2.1"
+  },
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  }
+}

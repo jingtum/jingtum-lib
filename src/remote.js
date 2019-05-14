@@ -979,6 +979,8 @@ Remote.prototype.invokeContract = function(options) {
     var des = options.destination;
     var func = options.func; //函数名及函数参数
     var abi = options.abi;
+    var amount = options.amount;
+
 
     if (!utils.isValidAddress(account)) {
         tx.tx_json.account = new Error('invalid address');
@@ -1000,22 +1002,34 @@ Remote.prototype.invokeContract = function(options) {
         tx.tx_json.params =  new Error('invalid abi: type error.');
         return tx;
     }
+    if(amount && isNaN(amount)){
+        tx.tx_json.amount =  new Error('invalid amount: amount must be a number.');
+        return tx;
+    }
     this.fun = func.substring(0, func.indexOf('('));
+    if(amount){
+        var that = this;
+        abi.forEach(function (a) {
+            if(a.name === that.fun && !a.payable){
+                tx.tx_json.amount =  new Error('when payable is true, you can set the value of amount');
+                return tx;
+            }
+        })
+    }
+
 
     var tum3 = new Tum3();
     tum3.mc.defaultAccount = account;
     var MyContract = tum3.mc.contract(abi);
     this.abi = abi;
     var myContractInstance = MyContract.at(des);// initiate contract for an address
-    // try {
+    try {
         var result = eval('myContractInstance.' + func);// call constant function
-    // }catch (e){
-    //     tx.tx_json.foo = new Error('invalid foo, not found this function.' + e);
-    //     return tx;
-    // }
+    }catch (e){
+        console.log('not found this function.' + e);
+    }
 
     if(!result){
-        console.log('result: ', result);
         tx.tx_json.des = new Error('invalid func, no result');
         return tx;
     }
@@ -1023,8 +1037,10 @@ Remote.prototype.invokeContract = function(options) {
     tx.tx_json.Account = account;
     tx.tx_json.Method = 1;
     tx.tx_json.Destination = des;
+    tx.tx_json.Amount = options.amount ? options.amount: 0;
     tx.tx_json.Args = [];
     tx.tx_json.Args.push({Arg: {Parameter: utils.stringToHex(result.substr(2,result.length)), ContractParamsType:0}});
+    // console.log(tx.tx_json);
     return tx;
 };
 

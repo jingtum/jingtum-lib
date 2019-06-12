@@ -1,6 +1,6 @@
 {
   "name": "jingtum-lib",
-  "version": "2.1.2",
+  "version": "2.1.6",
   "description": "jingtum lib",
   "main": "index.js",
   "browser": {
@@ -29,7 +29,7 @@
   "author": "jingtum inc.",
   "license": "Apache-2.0",
   "dependencies": {
-    "bignumber.js": "^5.0.0",
+    "bignumber.js": "^8.1.1",
     "bn-plus.js": "^1.0.0",
     "extend": "^3.0.0",
     "jingtum-base-lib": "^1.2.1",

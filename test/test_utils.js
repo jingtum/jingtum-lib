@@ -305,12 +305,12 @@ describe("test utils", function() {
         });
 
         it("check offernew: buy", function() {
-            let res = utils.processTx(txData.input7, testAddress)
+            let res = utils.processTx(txData.input7, testAddress);
             expect(res).to.deep.equal(txData.output7)
         });
 
         it("check offernew: sell", function() {
-            let res = utils.processTx(txData.input8, testAddress)
+            let res = utils.processTx(txData.input8, testAddress);
             expect(res).to.deep.equal(txData.output8)
         });
 

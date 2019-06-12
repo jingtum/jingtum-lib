@@ -145,7 +145,7 @@ function isValidAmount0(amount) {
  * @returns {*}
  */
 function parseAmount(amount) {
-    if (typeof amount === 'string' && Number(amount) !== NaN) {
+    if (!isNaN(amount)) {
         var value = String(new bignumber(amount).dividedBy(1000000.0));
         return {value: value, currency: currency, issuer: ''};
     } else if (typeof amount === 'object' && isValidAmount(amount)) {
@@ -443,6 +443,7 @@ function processTx(txn, account) {
             result.gets = parseAmount(tx.TakerGets);
             result.pays = parseAmount(tx.TakerPays);
             result.seq = tx.Sequence;
+            result.price = result.offertype === 'sell' ? new bignumber(result.pays.value).div(result.gets.value).toNumber() :  new bignumber(result.gets.value).div(result.pays.value).toNumber();
             break;
         case 'offercancel':
             result.offerseq = tx.Sequence;
@@ -495,6 +496,16 @@ function processTx(txn, account) {
         return result;
     }
 
+    var cos = [];//cos.length求出几类货币撮合
+    var getsValue = 0;//实际对方获得的
+    var paysValue = 0;//实际对方支付的
+    var totalRate = 0;//一共收取的挂单手续费
+
+    if(result.gets){
+        cos.push(result.gets.currency);
+        cos.push(result.pays.currency);
+    }
+    result.balances = {}; //存放交易后余额
     // process effects
     meta.AffectedNodes.forEach(function(n) {
         var node = processAffectNode(n);
@@ -524,8 +535,10 @@ function processTx(txn, account) {
                     effect.got = AmountSubtract(parseAmount(node.fieldsPrev.TakerPays), parseAmount(node.fields.TakerPays));
                     effect.paid = AmountSubtract(parseAmount(node.fieldsPrev.TakerGets), parseAmount(node.fields.TakerGets));
                     effect.type = sell ? 'sold' : 'bought';
-                    if(node.fields.OfferFeeRateNum)
+                    if(node.fields.OfferFeeRateNum){
+                        effect.app = node.fields.AppType;
                         effect.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
+                    }
                 } else {
                     // offer_funded, offer_created or offer_cancelled offer effect
                     effect.effect = node.diffType === 'CreatedNode' ? 'offer_created' : node.fieldsPrev.TakerPays ? 'offer_funded' : 'offer_cancelled';
@@ -536,14 +549,20 @@ function processTx(txn, account) {
                         effect.got = AmountSubtract(parseAmount(node.fieldsPrev.TakerPays), parseAmount(node.fields.TakerPays));
                         effect.paid = AmountSubtract(parseAmount(node.fieldsPrev.TakerGets), parseAmount(node.fields.TakerGets));
                         effect.type = sell ? 'sold' : 'bought';
-                        if(node.fields.OfferFeeRateNum)
+                        if(node.fields.OfferFeeRateNum){
+                            effect.app = node.fields.AppType;
                             effect.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
+                        }
                     }
                     // 3. offer_created
                     if (effect.effect === 'offer_created') {
                         effect.gets = parseAmount(fieldSet.TakerGets);
                         effect.pays = parseAmount(fieldSet.TakerPays);
                         effect.type = sell ? 'sell' : 'buy';
+                        if(fieldSet.OfferFeeRateNum){
+                            effect.app = fieldSet.AppType;
+                            effect.rate = new bignumber(parseInt(fieldSet.OfferFeeRateNum, 16)).div(parseInt(fieldSet.OfferFeeRateDen, 16)).toNumber();
+                        }
                     }
                     // 4. offer_cancelled
                     if (effect.effect === 'offer_cancelled') {
@@ -556,6 +575,10 @@ function processTx(txn, account) {
                         effect.gets = parseAmount(fieldSet.TakerGets);
                         effect.pays = parseAmount(fieldSet.TakerPays);
                         effect.type = sell ? 'sell' : 'buy';
+                        if(fieldSet.OfferFeeRateNum){
+                            effect.app = fieldSet.AppType;
+                            effect.rate = new bignumber(parseInt(fieldSet.OfferFeeRateNum, 16)).div(parseInt(fieldSet.OfferFeeRateDen, 16)).toNumber();
+                        }
                     }
                 }
                 effect.seq = node.fields.Sequence;
@@ -592,15 +615,41 @@ function processTx(txn, account) {
             }
         }
         if(node && node.entryType === 'Brokerage'){
+            result.app = node.fields.AppType;
             result.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
         }
 
+        if(node && node.entryType === 'SkywellState'){
+            if(node.fields.HighLimit.issuer === account || node .fields.LowLimit.issuer === account){
+                result.balances[node.fields.Balance.currency] = Math.abs(node.fields.Balance.value);
+            }
+        }
+        if(node && node.entryType === 'AccountRoot'){
+            if(node.fields.Account === account ){
+                result.balances[config.currency] = node.fields.Balance / 1000000;
+            }
+        }
         // add effect
         if (!_.isEmpty(effect)) {
             if (node.diffType === 'DeletedNode' && effect.effect !== 'offer_bought') {
                 effect.deleted = true;
             }
             result.effects.push(effect);
+        }
+        if(result.type === 'offernew' && effect.got){
+            if(result.gets.currency === effect.paid.currency){
+                getsValue = new bignumber(effect.paid.value).plus(getsValue).toNumber();
+            }
+            if(result.pays.currency === effect.got.currency){
+                paysValue = new bignumber(effect.got.value).plus(paysValue).toNumber();
+
+            }
+            if(result.gets.currency !== effect.paid.currency || result.pays.currency !== effect.got.currency) {
+                if(cos.indexOf(effect.got.currency) === -1)
+                    cos.push(effect.got.currency);
+                if(cos.indexOf(effect.paid.currency) === -1)
+                    cos.push(effect.paid.currency);
+            }
         }
     });
 
@@ -611,14 +660,44 @@ function processTx(txn, account) {
     for(var i = 0; i < result.effects.length; i++){
         var e = result.effects[i];
         if(result.rate && e.effect === 'offer_bought'){
+            if(e.got.currency === result.pays.currency)
+                totalRate = new bignumber(e.got.value).multipliedBy(result.rate).plus(totalRate).toNumber();
             e.rate = result.rate;
-            e.got.value = e.got.value * (1 - e.rate);
+            e.app = result.app;
+            e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
         }
         if(e.rate && (e.effect === 'offer_funded' || e.effect === 'offer_partially_funded')){
-            e.got.value = e.got.value * (1 - e.rate);
+            if(e.got.currency === result.pays.currency)
+                totalRate = new bignumber(e.got.value).multipliedBy(e.rate).plus(totalRate).toNumber() ;
+            e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
         }
     }
     delete result.rate;
+    delete result.app;
+
+    if(getsValue){
+        result.dealGets = {
+            value: getsValue + '',
+            currency: result.gets.currency,
+            issuer: result.gets.issuer || ''
+        };
+        result.dealPays = {
+            value: paysValue + '',
+            currency: result.pays.currency,
+            issuer: result.pays.issuer || ''
+        };
+        result.totalRate = {
+            value: totalRate + '',
+            currency: result.pays.currency,
+            issuer: result.pays.issuer || ''
+        };
+        result.dealPrice = result.offertype === 'sell' ? new bignumber(paysValue).div(getsValue).toString() :  new bignumber(getsValue).div(paysValue).toString();
+        result.dealNum = cos.length;
+    }
+    getsValue = null;
+    paysValue = null;
+    cos = null;
+    totalRate = null;
     return result;
 }
 function arraySet(count, value) {

@@ -760,7 +760,7 @@ Remote.prototype.requestBrokerage = function(options) {
     }
 
     request.message.issuer = issuer;
-    request.message.AppType = app;
+    request.message.AppType = Number(app);
     request.message.currency = currency;
     request.message.ledger_index = 'validated';
     return request;
@@ -878,7 +878,7 @@ function ToAmount(amount) {
     }
     if (amount.currency === currency) {
         // return new String(parseInt(Number(amount.value) * 1000000.00));
-        return String(parseInt(new bignumber(amount.value).mul(1000000.00)));
+        return String(parseInt(new bignumber(amount.value).multipliedBy(1000000.00)));
     }
     return amount;
 }
@@ -1138,7 +1138,7 @@ Remote.prototype.callContractTx = function(options) {
     var account = options.account;
     var des = options.destination;
     var params = options.params;
-    var foo = options.foo; //函数名
+    var func = options.func; //函数名
     if (!utils.isValidAddress(account)) {
         tx.tx_json.account = new Error('invalid address');
         return tx;
@@ -1152,15 +1152,15 @@ Remote.prototype.callContractTx = function(options) {
         tx.tx_json.params =  new Error('invalid options type');
         return tx;
     }
-    if(typeof foo !== 'string'){
-        tx.tx_json.foo =  new Error('foo must be string');
+    if(typeof func !== 'string'){
+        tx.tx_json.func =  new Error('func must be string');
         return tx;
     }
 
     tx.tx_json.TransactionType = 'ConfigContract';
     tx.tx_json.Account = account;
     tx.tx_json.Method = 1;
-    tx.tx_json.ContractMethod = utils.stringToHex(foo);
+    tx.tx_json.ContractMethod = utils.stringToHex(func);
     tx.tx_json.Destination = des;
     tx.tx_json.Args = [];
     for(var i in params){
@@ -1205,6 +1205,7 @@ Remote.prototype.buildBrokerageTx = function(options) {
         return tx;
     }
     var account = options.account;
+    var feeAccount = options.feeAccount;
     var mol = options.mol || options.molecule;
     var den = options.den || options.denominator;
     var app = options.app;
@@ -1221,7 +1222,7 @@ Remote.prototype.buildBrokerageTx = function(options) {
         tx.tx_json.den = new Error('invalid den/app, it is a positive integer.');
         return tx;
     }
-    if(mol > den){
+    if(Number(mol) > Number(den)){
         tx.tx_json.app = new Error('invalid mol/den, molecule can not exceed denominator.');
         return tx;
     }
@@ -1232,10 +1233,11 @@ Remote.prototype.buildBrokerageTx = function(options) {
 
     tx.tx_json.TransactionType = 'Brokerage';
     tx.tx_json.Account = account; //管理员账号
-    tx.tx_json.OfferFeeRateNum = mol; //分子(正整数 + 0)
-    tx.tx_json.OfferFeeRateDen = den; //分母(正整数)
-    tx.tx_json.AppType = app; //应用来源(正整数)
+    tx.tx_json.OfferFeeRateNum = Number(mol); //分子(正整数 + 0)
+    tx.tx_json.OfferFeeRateDen = Number(den); //分母(正整数)
+    tx.tx_json.AppType = Number(app); //应用来源(正整数)
     tx.tx_json.Amount = ToAmount(amount); //币种,这里amount字段中的value值只是占位，没有实际意义。
+    tx.tx_json.FeeAccountID = feeAccount; //收费账号
 
     return tx;
 };
@@ -1505,7 +1507,7 @@ Remote.prototype.buildOfferCreateTx = function(options) {
 
     tx.tx_json.TransactionType = 'OfferCreate';
     if (offer_type === 'Sell') tx.setFlags(offer_type);
-    if(app) tx.tx_json.AppType = app;
+    if(app) tx.tx_json.AppType = Number(app);
     tx.tx_json.Account = src;
     tx.tx_json.TakerPays = typeof taker_pays === 'object' ? ToAmount(taker_pays) : taker_pays;
     tx.tx_json.TakerGets = typeof taker_gets === 'object' ? ToAmount(taker_gets) : taker_gets;

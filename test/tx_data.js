@@ -297,6 +297,7 @@ const output7 = {
     value: "1"
   },
   seq: 4583,
+  price: 0.4,
   effects: []
 };
 
@@ -353,6 +354,7 @@ const output8 = {
     value: "80000"
   },
   seq: 4653,
+  price: 40,
   effects: []
 };
 

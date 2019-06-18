@@ -506,6 +506,7 @@ function processTx(txn, account) {
         cos.push(result.pays.currency);
     }
     result.balances = {}; //存放交易后余额
+    result.balancesPrev = {}; //存放交易前余额
     // process effects
     meta.AffectedNodes.forEach(function(n) {
         var node = processAffectNode(n);
@@ -536,7 +537,7 @@ function processTx(txn, account) {
                     effect.paid = AmountSubtract(parseAmount(node.fieldsPrev.TakerGets), parseAmount(node.fields.TakerGets));
                     effect.type = sell ? 'sold' : 'bought';
                     if(node.fields.OfferFeeRateNum){
-                        effect.app = node.fields.AppType;
+                        effect.platform = node.fields.Platform;
                         effect.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
                     }
                 } else {
@@ -550,7 +551,7 @@ function processTx(txn, account) {
                         effect.paid = AmountSubtract(parseAmount(node.fieldsPrev.TakerGets), parseAmount(node.fields.TakerGets));
                         effect.type = sell ? 'sold' : 'bought';
                         if(node.fields.OfferFeeRateNum){
-                            effect.app = node.fields.AppType;
+                            effect.platform = node.fields.Platform;
                             effect.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
                         }
                     }
@@ -560,7 +561,7 @@ function processTx(txn, account) {
                         effect.pays = parseAmount(fieldSet.TakerPays);
                         effect.type = sell ? 'sell' : 'buy';
                         if(fieldSet.OfferFeeRateNum){
-                            effect.app = fieldSet.AppType;
+                            effect.platform = fieldSet.Platform;
                             effect.rate = new bignumber(parseInt(fieldSet.OfferFeeRateNum, 16)).div(parseInt(fieldSet.OfferFeeRateDen, 16)).toNumber();
                         }
                     }
@@ -576,7 +577,7 @@ function processTx(txn, account) {
                         effect.pays = parseAmount(fieldSet.TakerPays);
                         effect.type = sell ? 'sell' : 'buy';
                         if(fieldSet.OfferFeeRateNum){
-                            effect.app = fieldSet.AppType;
+                            effect.platform = fieldSet.Platform;
                             effect.rate = new bignumber(parseInt(fieldSet.OfferFeeRateNum, 16)).div(parseInt(fieldSet.OfferFeeRateDen, 16)).toNumber();
                         }
                     }
@@ -615,18 +616,32 @@ function processTx(txn, account) {
             }
         }
         if(node && node.entryType === 'Brokerage'){
-            result.app = node.fields.AppType;
+            result.platform = node.fields.Platform;
             result.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
         }
 
-        if(node && node.entryType === 'SkywellState'){
+        if(node && node.entryType === 'SkywellState'){//其他币种余额
             if(node.fields.HighLimit.issuer === account || node .fields.LowLimit.issuer === account){
                 result.balances[node.fields.Balance.currency] = Math.abs(node.fields.Balance.value);
+                if(node.fieldsPrev.Balance){
+                    result.balancesPrev[node.fieldsPrev.Balance.currency] = Math.abs(node.fieldsPrev.Balance.value);
+                }else if(node.fieldsNew.Balance){//新增币种
+                    result.balancesPrev[node.fields.Balance.currency] = 0;
+                }else {
+                    delete result.balances[node.fields.Balance.currency];
+                }
             }
         }
-        if(node && node.entryType === 'AccountRoot'){
-            if(node.fields.Account === account ){
+        if(node && node.entryType === 'AccountRoot'){//基础币种余额
+            if(node.fields.Account === account){
                 result.balances[config.currency] = node.fields.Balance / 1000000;
+                if(node.fieldsPrev.Balance){
+                    result.balancesPrev[config.currency] = Math.abs(node.fieldsPrev.Balance / 1000000);
+                }else if(node.fieldsNew.Balance){
+                    result.balancesPrev[config.currency] = 0;
+                }else {//交易前后余额没有变化
+                    delete result.balances[config.currency];
+                }
             }
         }
         // add effect
@@ -660,20 +675,19 @@ function processTx(txn, account) {
     for(var i = 0; i < result.effects.length; i++){
         var e = result.effects[i];
         if(result.rate && e.effect === 'offer_bought'){
-            if(e.got.currency === result.pays.currency)
+            if(e.got.currency === result.pays.currency)//涉及多路径
                 totalRate = new bignumber(e.got.value).multipliedBy(result.rate).plus(totalRate).toNumber();
             e.rate = result.rate;
-            e.app = result.app;
+            e.platform = result.platform;
             e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
         }
-        if(e.rate && (e.effect === 'offer_funded' || e.effect === 'offer_partially_funded')){
-            if(e.got.currency === result.pays.currency)
-                totalRate = new bignumber(e.got.value).multipliedBy(e.rate).plus(totalRate).toNumber() ;
+        if(e.rate && (e.effect === 'offer_funded' || e.effect === 'offer_partially_funded')){//不涉及多路径
+            totalRate = new bignumber(e.got.value).multipliedBy(e.rate).plus(totalRate).toNumber() ;
             e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
         }
     }
     delete result.rate;
-    delete result.app;
+    delete result.platform;
 
     if(getsValue){
         result.dealGets = {

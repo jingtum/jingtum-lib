@@ -743,25 +743,14 @@ Remote.prototype.requestBrokerage = function(options) {
         request.message.type = new Error('invalid options type');
         return request;
     }
-    var issuer = options.issuer;
-    var app = options.app;
-    var currency = options.currency;
-    if (!utils.isValidAddress(issuer)) {
-        request.message.account = new Error('issuer parameter is invalid');
-        return request;
-    }
-    if(!/^[0-9]*[1-9][0-9]*$/.test(app)){//正整数
-        request.message.app = new Error('invalid app, it is a positive integer.');
-        return request;
-    }
-    if(!utils.isValidCurrency(currency)){//正整数
-        request.message.currency = new Error('invalid currency.');
+    var account = options.account;
+
+    if (!utils.isValidAddress(account)) {
+        request.message.account = new Error('account parameter is invalid');
         return request;
     }
 
-    request.message.issuer = issuer;
-    request.message.AppType = Number(app);
-    request.message.currency = currency;
+    request.message.account = account;
     request.message.ledger_index = 'validated';
     return request;
 };
@@ -1208,7 +1197,6 @@ Remote.prototype.buildBrokerageTx = function(options) {
     var feeAccount = options.feeAccount;
     var mol = options.mol || options.molecule;
     var den = options.den || options.denominator;
-    var app = options.app;
     var amount = options.amount;
     if (!utils.isValidAddress(account)) {
         tx.tx_json.src = new Error('invalid address');
@@ -1218,10 +1206,7 @@ Remote.prototype.buildBrokerageTx = function(options) {
         tx.tx_json.mol = new Error('invalid mol, it is a positive integer or zero.');
         return tx;
     }
-    if(!/^[0-9]*[1-9][0-9]*$/.test(den) || !/^[0-9]*[1-9][0-9]*$/.test(app)){//正整数
-        tx.tx_json.den = new Error('invalid den/app, it is a positive integer.');
-        return tx;
-    }
+
     if(Number(mol) > Number(den)){
         tx.tx_json.app = new Error('invalid mol/den, molecule can not exceed denominator.');
         return tx;
@@ -1235,7 +1220,6 @@ Remote.prototype.buildBrokerageTx = function(options) {
     tx.tx_json.Account = account; //管理员账号
     tx.tx_json.OfferFeeRateNum = Number(mol); //分子(正整数 + 0)
     tx.tx_json.OfferFeeRateDen = Number(den); //分母(正整数)
-    tx.tx_json.AppType = Number(app); //应用来源(正整数)
     tx.tx_json.Amount = ToAmount(amount); //币种,这里amount字段中的value值只是占位，没有实际意义。
     tx.tx_json.FeeAccountID = feeAccount; //收费账号
 
@@ -1473,7 +1457,7 @@ Remote.prototype.buildOfferCreateTx = function(options) {
     var src = options.source || options.from || options.account;
     var taker_gets = options.taker_gets || options.pays;
     var taker_pays = options.taker_pays || options.gets;
-    var app = options.app;
+    var platform = options.platform;//app平台标识账号
 
     if (!utils.isValidAddress(src)) {
         tx.tx_json.src = new Error('invalid source address');
@@ -1500,14 +1484,14 @@ Remote.prototype.buildOfferCreateTx = function(options) {
         tx.tx_json.taker_pays = new Error('invalid to gets amount object');
         return tx;
     }
-    if(app && !/^[0-9]*[1-9][0-9]*$/.test(app)) {//正整数
-        tx.tx_json.app = new Error('invalid app, it is a positive integer.');
+    if(platform && !utils.isValidAddress(platform)) {
+        tx.tx_json.platform = new Error('invalid platform, it must be a valid address.');
         return tx;
     }
 
     tx.tx_json.TransactionType = 'OfferCreate';
     if (offer_type === 'Sell') tx.setFlags(offer_type);
-    if(app) tx.tx_json.AppType = Number(app);
+    if(platform) tx.tx_json.Platform = platform;
     tx.tx_json.Account = src;
     tx.tx_json.TakerPays = typeof taker_pays === 'object' ? ToAmount(taker_pays) : taker_pays;
     tx.tx_json.TakerGets = typeof taker_gets === 'object' ? ToAmount(taker_gets) : taker_gets;

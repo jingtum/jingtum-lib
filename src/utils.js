@@ -303,14 +303,14 @@ function txnType(tx, account) {
     if (tx.Account === account || tx.Target === account || (tx.Destination && tx.Destination === account)
             || (tx.LimitAmount && tx.LimitAmount.issuer === account)) {
         switch(tx.TransactionType) {
-            case 'Payment':
+            case 'Payment': //支付类
                 return tx.Account === account ?
                     tx.Destination === account ? 'convert' : 'sent' : 'received';
-            case 'OfferCreate':
+            case 'OfferCreate': //创建挂单类
                 return 'offernew';
-            case 'OfferCancel':
+            case 'OfferCancel'://取消挂单类
                 return 'offercancel';
-            case 'TrustSet':
+            case 'TrustSet': //设置信任线
                 return tx.Account === account ? 'trusting' : 'trusted';
             case 'RelationDel':
             case 'AccountSet':
@@ -318,8 +318,9 @@ function txnType(tx, account) {
             case 'RelationSet':
             case 'SignSet':
             case 'Operation':
-            case 'ConfigContract':
-            case 'AlethContract':
+            case 'ConfigContract': //lua版本合约类
+            case 'AlethContract': //solidity版本合约类
+            case 'Brokerage': //设置手续费类
                 // TODO to sub-class tx type
                 return tx.TransactionType.toLowerCase();
             default :
@@ -469,6 +470,13 @@ function processTx(txn, account) {
                 result.method = 'call';
                 result.destination = tx.Destination;
             }
+            break;
+        case 'brokerage':
+            result.feeAccount = tx.FeeAccountID;
+            result.mol = parseInt(tx.OfferFeeRateNum, 16);
+            result.den = parseInt(tx.OfferFeeRateDen,16);
+            result.amount = parseAmount(tx.Amount);
+            result.seq = tx.Sequence;
             break;
         default :
             // TODO parse other type

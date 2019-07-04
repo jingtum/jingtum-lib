@@ -202,6 +202,9 @@ Remote.prototype._handleResponse = function(data) {
     }
     var request = this._requests[req_id];
     // pass process it when null callback
+    if(request.data && request.data.abi){
+        data.abi = request.data.abi;
+    }
     delete this._requests[req_id];
     delete data.id;
 
@@ -211,13 +214,17 @@ Remote.prototype._handleResponse = function(data) {
         this._updateServerStatus(data.result);
     }
 
-    var self = this;
     // return to callback
     if (data.status === 'success') {
         var result = request.filter(data.result);
         if(result.ContractState && result.tx_json.TransactionType === 'AlethContract' && result.tx_json.Method === 1){//调用合约时，如果是获取变量，则转换一下
+            var method = utils.hexToString(result.tx_json.MethodSignature);
+            result.func = method.substring(0, method.indexOf('('));//函数名
+            result.func_parms = method.substring(method.indexOf('(') + 1, method.indexOf(')')).split(','); //函数参数
+            if(result.func_parms.length === 1 && result.func_parms[0] === '')//没有参数，返回空数组
+                result.func_parms = [];
             var abi = new AbiCoder();
-            var types = getTypes(self.abi, self.fun);
+            var types = getTypes(data.abi, result.func);
             result.ContractState = abi.decodeParameters(types, result.ContractState);
             types.forEach(function (type, i) {
                 if(type === 'address') {
@@ -241,7 +248,7 @@ Remote.prototype._handleResponse = function(data) {
                 item.address = KeyPair.__encode(buf);
 
                 var abi = new AbiCoder();
-                self.abi.filter(function (json) { return json.type === 'event' })
+                data.abi.filter(function (json) { return json.type === 'event' })
                     .map(function (json)
                     {
                         var types =  json.inputs.map(function (input) {
@@ -995,11 +1002,10 @@ Remote.prototype.invokeContract = function(options) {
         tx.tx_json.amount =  new Error('invalid amount: amount must be a number.');
         return tx;
     }
-    this.fun = func.substring(0, func.indexOf('('));
+
     if(amount){
-        var that = this;
         abi.forEach(function (a) {
-            if(a.name === that.fun && !a.payable){
+            if(a.name === func.substring(0, func.indexOf('(')) && !a.payable){
                 tx.tx_json.amount =  new Error('when payable is true, you can set the value of amount');
                 return tx;
             }
@@ -1010,7 +1016,7 @@ Remote.prototype.invokeContract = function(options) {
     var tum3 = new Tum3();
     tum3.mc.defaultAccount = account;
     var MyContract = tum3.mc.contract(abi);
-    this.abi = abi;
+    tx.abi = abi;
     var myContractInstance = MyContract.at(des);// initiate contract for an address
     try {
         var result = eval('myContractInstance.' + func);// call constant function
@@ -1027,9 +1033,9 @@ Remote.prototype.invokeContract = function(options) {
     tx.tx_json.Method = 1;
     tx.tx_json.Destination = des;
     tx.tx_json.Amount = options.amount ? options.amount: 0;
+    tx.tx_json.MethodSignature = utils.stringToHex(func);
     tx.tx_json.Args = [];
     tx.tx_json.Args.push({Arg: {Parameter: utils.stringToHex(result.substr(2,result.length)), ContractParamsType:0}});
-    // console.log(tx.tx_json);
     return tx;
 };
 

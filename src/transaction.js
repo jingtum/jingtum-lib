@@ -18,6 +18,7 @@ function Transaction(remote, filter) {
     self.tx_json = {Flags: 0, Fee: fee};
     self._filter = filter || function(v) {return v};
     self._secret = void(0);
+    self.abi = void(0);
 }
 util.inherits(Transaction, Event);
 
@@ -368,7 +369,8 @@ Transaction.prototype.submit = function(callback) {
                 return callback('sign error: ' + err);
             }else{
                 var data = {
-                    tx_blob: self.tx_json.blob
+                    tx_blob: self.tx_json.blob,
+                    abi: self.abi
                 };
                 self._remote._submit('submit', data, self._filter, callback);
             }
@@ -376,7 +378,8 @@ Transaction.prototype.submit = function(callback) {
     }else{//不签名交易传给底层
         data = {
             secret: self._secret,
-            tx_json: self.tx_json
+            tx_json: self.tx_json,
+            abi: self.abi
         };
         self._remote._submit('submit', data, self._filter, callback);
     }

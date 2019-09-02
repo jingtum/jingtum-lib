@@ -321,6 +321,7 @@ function txnType(tx, account) {
             case 'ConfigContract': //lua版本合约类
             case 'AlethContract': //solidity版本合约类
             case 'Brokerage': //设置手续费类
+            case 'SignerListSet': //签名列表类
                 // TODO to sub-class tx type
                 return tx.TransactionType.toLowerCase();
             default :
@@ -495,9 +496,24 @@ function processTx(txn, account) {
             result.amount = parseAmount(tx.Amount);
             result.seq = tx.Sequence;
             break;
+        case 'signerlistset':
+            var l = [];
+            tx.SignerEntries.forEach(function (s) {
+               l.push({account: s.SignerEntry.Account, weight: s.SignerEntry.SignerWeight});
+            });
+            result.threshold = tx.SignerQuorum;
+            result.lists = l;
+            result.seq = tx.Sequence;
+            break;
         default :
             // TODO parse other type
             break;
+    }
+    if(tx.Signers){//添加签名列表
+        result.signers = [];
+        tx.Signers.forEach(function (s) {
+            result.signers.push( s.Signer.Account);
+        });
     }
     // add memo
     if (Array.isArray(tx.Memos) && tx.Memos.length > 0) {

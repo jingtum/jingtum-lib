@@ -12,6 +12,7 @@ var OrderBook = require('./orderbook');
 var utils = require('./utils');
 var _ = require('lodash');
 const currency = require('./config').currency;
+const fee = require('./config').fee;
 var bignumber = require('bignumber.js');
 var Tum3 = require('tum3');
 var AbiCoder = require('tum3-eth-abi').AbiCoder;
@@ -759,6 +760,23 @@ Remote.prototype.requestBrokerage = function(options) {
 
     request.message.account = account;
     request.message.ledger_index = 'validated';
+    return request;
+};
+
+Remote.prototype.requestSignerList = function(options) {
+    var request = new Request(this, 'account_objects');
+    if (options === null || typeof options !== 'object') {
+        request.message.type = new Error('invalid options type');
+        return request;
+    }
+    var account = options.account;
+
+    if (!utils.isValidAddress(account)) {
+        request.message.account = new Error('account parameter is invalid');
+        return request;
+    }
+
+    request.message.account = account;
     return request;
 };
 // ---------------------- path find request --------------------
@@ -1537,6 +1555,104 @@ Remote.prototype.buildOfferCancelTx = function(options) {
 
     return tx;
 };
+
+
+Remote.prototype.buildSignerListTx = function(options) {
+    var tx = new Transaction(this);
+    if (options === null || typeof options !== 'object') {
+        tx.tx_json.obj = new Error('invalid options type');
+        return tx;
+    }
+    var account =  options.account;
+    var threshold = options.threshold;//阈值
+    var lists = options.lists; //签字人列表
+    if (!utils.isValidAddress(account)) {
+        tx.tx_json.src = new Error('invalid address');
+        return tx;
+    }
+    if (isNaN(threshold) || Number(threshold) < 0) {
+        tx.tx_json.threshold = new Error('invalid threshold, it must be a number and greater than zero');
+        return tx;
+    }
+    if (lists && !Array.isArray(lists)) {
+        tx.tx_json.lists =  new Error('invalid options type, it must be an array');
+        return tx;
+    }
+    if(Number(threshold) === 0 && lists && lists.length >= 0){
+        tx.tx_json.lists =  new Error('please delete lists when threshold is zero');
+        return tx;
+    }
+    var sum = 0;
+    if(Number(threshold) !== 0 && lists && lists.length > 0){
+        var newList = [];
+        for(var i = 0; i < lists.length; i++){
+            if(lists[i].account && utils.isValidAddress(lists[i].account) && lists[i].weight && !isNaN(lists[i].weight) && Number(lists[i].weight) > 0){
+                sum += Number(lists[i].weight);
+                newList.push({
+                    SignerEntry:{
+                        Account: lists[i].account,
+                        SignerWeight: lists[i].weight
+                    }
+                });
+            }else {
+                tx.tx_json.lists =  new Error('invalid lists');
+                return tx;
+            }
+        }
+        tx.tx_json.SignerEntries = newList;
+    }
+    if(sum < Number(threshold)){
+        tx.tx_json.threshold =  new Error('The total signer weight is less than threshold');
+        return tx;
+    }
+    tx.tx_json.TransactionType = 'SignerListSet';
+    tx.tx_json.Account = account;
+    tx.tx_json.SignerQuorum = Number(threshold);
+
+    return tx;
+};
+
+Remote.prototype.buildSignFirstTx = function(options) {//首签账号添加SigningPubKey字段
+    options.tx.setCommand('sign_for');
+    options.tx.tx_json.SigningPubKey = '';
+    options.tx.sign_account = options.account;
+    options.tx.sign_secret = options.secret;
+    return options.tx;
+};
+Remote.prototype.buildSignOtherTx = function(options) {//其他账号签名只需把返回结果提交回去即可
+    var tx = new Transaction(this);
+    if (options === null || typeof options !== 'object') {
+        tx.tx_json.options =  new Error('invalid options type');
+        return tx;
+    }
+    tx.setCommand('sign_for');
+    tx.tx_json = options.tx_json;
+    tx.sign_account = options.account;
+    tx.sign_secret = options.secret;
+    return tx;
+};
+
+Remote.prototype.buildMultisignedTx = function(tx_json) {//提交多重签名
+    var tx = new Transaction(this);
+    if (tx_json === null || typeof tx_json !== 'object') {
+        tx.tx_json.tx_json =  new Error('invalid tx_json type');
+        return tx;
+    }
+    tx.setCommand('submit_multisigned');
+    tx.tx_json = tx_json;
+    return tx;
+};
+Remote.prototype.buildTx = function(tx_json) {//多重签名中通过tx_json创建Transaction对象
+    var tx = new Transaction(this);
+    if (tx_json === null || typeof tx_json !== 'object') {
+        tx.tx_json.tx_json =  new Error('invalid tx_json type');
+        return tx;
+    }
+    tx.tx_json = tx_json;
+    return tx;
+};
+
+
 
 module.exports = Remote;
 

@@ -4,7 +4,10 @@ var Event = require('events').EventEmitter;
 var utf8 = require('utf8');
 var utils = require('./utils');
 var baselib = require('jingtum-base-lib').Wallet;
+var jser = require('../lib/Serializer').Serializer;
 const fee = require('./config').fee || 10000;
+const MUTIPREFIX = 0x534d5400; //多重签名前缀
+
 /**
  * Post request to server with account secret
  * @param remote
@@ -19,6 +22,9 @@ function Transaction(remote, filter) {
     self._filter = filter || function(v) {return v};
     self._secret = void(0);
     self.abi = void(0);
+    self.command = 'submit';
+    self.sign_account = void(0);
+    self.sign_secret = void(0);
 }
 util.inherits(Transaction, Event);
 
@@ -117,6 +123,10 @@ Transaction.prototype.setSecret = function(secret) {
         return;
     }
     this._secret = secret;
+};
+
+Transaction.prototype.setCommand = function(command) {
+    this.command = command;
 };
 
 function __hexToString(h) {
@@ -289,34 +299,37 @@ Transaction.prototype.setSequence = function(sequence) {
 
     this.tx_json.Sequence = Number(sequence);
 };
-function signing(self, callback) {
-    const base = require('jingtum-base-lib').Wallet;
-    var jser = require('../lib/Serializer').Serializer;
-    self.tx_json.Fee = self.tx_json.Fee/1000000;
+
+function tx_json_filter(tx_json) {//签名时，序列化之前的字段处理
+    tx_json.Fee = tx_json.Fee / 1000000;
 
     //payment
-    if(self.tx_json.Amount && JSON.stringify(self.tx_json.Amount).indexOf('{') < 0){//基础货币
-        self.tx_json.Amount = Number(self.tx_json.Amount)/1000000;
+    if(tx_json.Amount && !isNaN(tx_json.Amount)){//基础货币
+        tx_json.Amount = tx_json.Amount / 1000000;
     }
-    if(self.tx_json.Memos){
-        var memos = self.tx_json.Memos;
+    if(tx_json.Memos){
+        var memos = tx_json.Memos;
         for(var i = 0; i < memos.length; i++){
             memos[i].Memo.MemoData = utf8.decode(__hexToString(memos[i].Memo.MemoData));
         }
     }
-    if(self.tx_json.SendMax && typeof self.tx_json.SendMax === 'string'){
-        self.tx_json.SendMax = Number(self.tx_json.SendMax)/1000000;
+    if(tx_json.SendMax && !isNaN(tx_json.SendMax)){
+        tx_json.SendMax = Number(tx_json.SendMax) / 1000000;
     }
 
     //order
-    if(self.tx_json.TakerPays && JSON.stringify(self.tx_json.TakerPays).indexOf('{') < 0){//基础货币
-        self.tx_json.TakerPays = Number(self.tx_json.TakerPays)/1000000;
+    if(tx_json.TakerPays && !isNaN(tx_json.TakerPays)){//基础货币
+        tx_json.TakerPays = Number(tx_json.TakerPays) / 1000000;
     }
-    if(self.tx_json.TakerGets && JSON.stringify(self.tx_json.TakerGets).indexOf('{') < 0){//基础货币
-        self.tx_json.TakerGets = Number(self.tx_json.TakerGets)/1000000;
+    if(tx_json.TakerGets && !isNaN(tx_json.TakerGets)){//基础货币
+        tx_json.TakerGets = Number(tx_json.TakerGets) / 1000000;
     }
+}
+
+function signing(self, callback) {
     try{
-        var wt = new base(self._secret);
+        tx_json_filter(self.tx_json);
+        var wt = new baselib(self._secret);
         self.tx_json.SigningPubKey = wt.getPublicKey();
         var prefix = 0x53545800;
         var hash = jser.from_json(self.tx_json).hash(prefix);
@@ -328,6 +341,75 @@ function signing(self, callback) {
         callback(e);
     }
 }
+
+function verifyTx(tx_json) {//验签
+    var tx_json_new = JSON.parse(JSON.stringify(tx_json));
+    tx_json_filter(tx_json_new);
+    var signers = tx_json_new.Signers;
+    delete tx_json_new.Signers;
+    if(signers && signers.length > 0){
+        for(var i = 0; i < signers.length; i++){
+            var s = signers[i].Signer;
+            var fromJson = jser.from_json(tx_json_new);
+            fromJson = jser.adr_json(fromJson, s.Account);
+            if(!baselib.checkTx(fromJson.hash(MUTIPREFIX), s.TxnSignature, s.SigningPubKey)){
+                return false;
+            }
+        }
+    }
+    return true;
+}
+/*
+* options: {
+*   address: '',
+*   secret: ''
+* }
+* */
+Transaction.prototype.multiSigning = function (options) {
+    if(!this.tx_json.Sequence){
+        this.tx_json.Sequence = new Error('please set sequence first');
+        return this;
+    }
+
+    var signers = this.tx_json.Signers || [];
+    if(signers && signers.length > 0){//验签
+        if(!verifyTx(this.tx_json)){
+            this.tx_json.verifyTx = new Error('verify failed');
+            return this;
+        }
+    }
+
+    this.tx_json.SigningPubKey = '';//多签中该字段必须有且必须为空字符串
+    var tx_json = JSON.parse(JSON.stringify(this.tx_json));
+    tx_json_filter(tx_json);
+    delete tx_json.Signers;
+    var fromJson = jser.from_json(tx_json);
+    var signer = {Account: options.account};
+    fromJson = jser.adr_json(fromJson, options.account);
+    var hash = fromJson.hash(MUTIPREFIX);
+    var wt = new baselib(options.secret);
+    signer.SigningPubKey = wt.getPublicKey();
+    signer.TxnSignature = wt.signTx(hash);
+
+    this.tx_json.Signers =  this.tx_json.Signers || [];
+    this.tx_json.Signers.push({
+        Signer: signer
+    });
+};
+
+Transaction.prototype.multiSigned = function() {//多重签名完毕
+    this.command = 'submit_multisigned';
+    var signers = this.tx_json.Signers || [];
+    if(signers && signers.length > 0){//验签
+        if(!verifyTx(this.tx_json)){
+            this.tx_json.verifyTx = new Error('verify failed');
+            return this;
+        }
+    }
+    if(Number(signers.length * fee) > Number(this.tx_json.Fee)){//验证燃料费是否够用
+        this.tx_json.Fee =  new Error('low fee');
+    }
+};
 
 Transaction.prototype.sign = function(callback) {
     var self = this;
@@ -356,13 +438,14 @@ Transaction.prototype.submit = function(callback) {
             return callback(self.tx_json[key].message);
         }
     }
-
+    if(self.command === 'submit_multisigned' || self.command === 'sign_for') // 多重签名按照不签名走
+        self._remote._local_sign = false;
     var data = {};
     if(self.tx_json.TransactionType === 'Signer'){//直接将blob传给底层
         data = {
             tx_blob: self.tx_json.blob
         };
-        self._remote._submit('submit', data, self._filter, callback);
+        self._remote._submit(self.command, data, self._filter, callback);
     } else if(self._remote._local_sign){//签名之后传给底层
         self.sign(function (err, blob) {
             if(err){
@@ -372,16 +455,18 @@ Transaction.prototype.submit = function(callback) {
                     tx_blob: self.tx_json.blob,
                     abi: self.abi
                 };
-                self._remote._submit('submit', data, self._filter, callback);
+                self._remote._submit(self.command, data, self._filter, callback);
             }
         });
-    }else{//不签名交易传给底层
+    }else{//不签名交易传给底层 和 多重签名提交
         data = {
             secret: self._secret,
             tx_json: self.tx_json,
             abi: self.abi
         };
-        self._remote._submit('submit', data, self._filter, callback);
+        if(self.sign_account) data.account = self.sign_account;
+        if(self.sign_secret) data.secret = self.sign_secret;
+        self._remote._submit(self.command, data, self._filter, callback);
     }
 };
 

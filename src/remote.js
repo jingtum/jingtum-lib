@@ -275,6 +275,9 @@ Remote.prototype._handleResponse = function(data) {
             });
             result.AlethLog = logValue;
         }
+        if(result.TransactionType === 'SetBlackList' || result.TransactionType === 'RemoveBlackList'){ //该类型实际未收燃料费
+            result.Fee = '0';
+        }
         request && request.callback(null, result);
     } else if (data.status === 'error') {
         request && request.callback(data.error_message || data.error_exception);
@@ -779,6 +782,36 @@ Remote.prototype.requestSignerList = function(options) {
     request.message.account = account;
     return request;
 };
+
+/**
+ * @param options
+ * {
+ *   account(option): the query account
+ *   marker(option):  for more black account
+ * }
+ * @returns {Request}
+ */
+Remote.prototype.requestBlacklist = function(options) {
+    var request = new Request(this, 'blacklist_info');
+
+    if(!options){
+        return request;
+    }
+    if (options && typeof options !== 'object') {
+        request.message.type = new Error('invalid options type');
+        return request;
+    }
+    var account = options.account;
+    if(account && !utils.isValidAddress(account)){
+        request.message.account = new Error('invalid account');
+        return request;
+    }
+    if (options.marker) {
+        request.message.marker = options.marker;
+    }
+    request.message.account = account;
+    return request;
+};
 // ---------------------- path find request --------------------
 /**
  * @param options
@@ -1219,7 +1252,7 @@ Remote.prototype.buildBrokerageTx = function(options) {
     }
     var account = options.account;
     var feeAccount = options.feeAccount;
-    var mol = options.mol || options.molecule;
+    var mol = (Number(options.mol) === 0 || Number(options.molecule) === 0) ? 0 : (options.mol || options.molecule);
     var den = options.den || options.denominator;
     var amount = options.amount;
     if (!utils.isValidAddress(account)) {

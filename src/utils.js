@@ -301,7 +301,7 @@ function affectedBooks(tx) {
  */
 function txnType(tx, account) {
     if (tx.Account === account || tx.Target === account || (tx.Destination && tx.Destination === account)
-            || (tx.LimitAmount && tx.LimitAmount.issuer === account)) {
+            || (tx.LimitAmount && tx.LimitAmount.issuer === account) || tx.BlackListAccountID === account) {
         switch(tx.TransactionType) {
             case 'Payment': //支付类
                 return tx.Account === account ?
@@ -322,6 +322,8 @@ function txnType(tx, account) {
             case 'AlethContract': //solidity版本合约类
             case 'Brokerage': //设置手续费类
             case 'SignerListSet': //签名列表类
+            case 'SetBlackList': //黑名单
+            case 'RemoveBlackList': //解除黑名单
                 // TODO to sub-class tx type
                 return tx.TransactionType.toLowerCase();
             default :
@@ -504,6 +506,11 @@ function processTx(txn, account) {
             result.threshold = tx.SignerQuorum;
             result.lists = l;
             result.seq = tx.Sequence;
+            break;
+        case 'setblacklist':
+        case 'removeblacklist':
+            result.src = tx.Account;
+            result.black = tx.BlackListAccountID;
             break;
         default :
             // TODO parse other type
@@ -721,10 +728,12 @@ function processTx(txn, account) {
             e.rate = result.rate;
             e.platform = result.platform;
             e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
+            e.fee = new bignumber(e.got.value).div(1 - e.rate).multipliedBy(e.rate).toString();
         }
         if(e.rate && (e.effect === 'offer_funded' || e.effect === 'offer_partially_funded')){//不涉及多路径
             totalRate = new bignumber(e.got.value).multipliedBy(e.rate).plus(totalRate).toNumber() ;
             e.got.value = new bignumber(e.got.value).multipliedBy(1 - e.rate).toString();
+            e.fee = new bignumber(e.got.value).div(1 - e.rate).multipliedBy(e.rate).toString();
         }
     }
     delete result.rate;

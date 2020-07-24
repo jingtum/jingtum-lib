@@ -1,6 +1,6 @@
 {
   "name": "jingtum-lib",
-  "version": "2.3.0",
+  "version": "2.3.4",
   "description": "jingtum lib",
   "main": "index.js",
   "browser": {

@@ -3,6 +3,7 @@
  */
 var extend = require('extend');
 var baselib = require('jingtum-base-lib').Wallet;
+var KeyPair = require('jingtum-base-lib').KeyPair;
 var Transaction = require('./transaction');
 var _ = require('lodash');
 var utf8 = require('utf8');
@@ -421,6 +422,7 @@ function processTx(txn, account) {
     // if(tx.TransactionType !== 'RelationSet')
     result.result = meta ? meta.TransactionResult : 'failed';
     result.memos = [];
+    result.ledger_index = tx.ledger_index;
     switch(result.type) {
         case 'sent':
             result.counterparty = tx.Destination;
@@ -663,9 +665,15 @@ function processTx(txn, account) {
                 effect.regularkey = account;
             }
         }
+
         if(node && node.entryType === 'Brokerage'){
             result.platform = node.fields.Platform;
             result.rate = new bignumber(parseInt(node.fields.OfferFeeRateNum, 16)).div(parseInt(node.fields.OfferFeeRateDen, 16)).toNumber();
+        }
+
+        if(node && node.entryType === 'ETHState'){//合约调用日志
+            if(node.fields && node.fields.info)
+                result.eventLog = hexToString(node.fields.info);
         }
 
         if(node && node.entryType === 'SkywellState'){//其他币种余额
@@ -774,6 +782,14 @@ function arraySet(count, value) {
     return a;
 }
 
+function eth2Jingtum(ethadr) {
+    var buf = new Buffer(20);
+    var b = ethadr.replace(/0x/i, '');
+    b = b.length > 40 ? b.slice(24) : b;
+    buf.write(b, 0, 'hex');
+    return KeyPair.__encode(buf);
+}
+
 var ACCOUNT_ZERO =  config.ACCOUNT_ZERO;
 var ACCOUNT_ONE  =  config.ACCOUNT_ONE;
 
@@ -796,5 +812,6 @@ module.exports = {
     LEDGER_STATES: LEDGER_STATES,
     ACCOUNT_ZERO: ACCOUNT_ZERO,
     ACCOUNT_ONE: ACCOUNT_ONE,
-    arraySet:arraySet
+    arraySet:arraySet,
+    eth2Jingtum: eth2Jingtum
 };

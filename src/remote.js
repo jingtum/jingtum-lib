@@ -224,17 +224,19 @@ Remote.prototype._handleResponse = function(data) {
             result.func_parms = method.substring(method.indexOf('(') + 1, method.indexOf(')')).split(','); //函数参数
             if(result.func_parms.length === 1 && result.func_parms[0] === '')//没有参数，返回空数组
                 result.func_parms = [];
-            var abi = new AbiCoder();
-            var types = getTypes(data.abi, result.func);
-            result.ContractState = abi.decodeParameters(types, result.ContractState);
-            types.forEach(function (type, i) {
-                if(type === 'address') {
-                    var adr = result.ContractState[i].slice(2);
-                    var buf = new Buffer(20);
-                    buf.write(adr, 0, 'hex');
-                    result.ContractState[i] = KeyPair.__encode(buf)
-                }
-            });
+            if(result.engine_result === 'tesSUCCESS'){
+                var abi = new AbiCoder();
+                var types = getTypes(data.abi, result.func);
+                result.ContractState = abi.decodeParameters(types, result.ContractState);
+                types.forEach(function (type, i) {
+                    if(type === 'address') {
+                        var adr = result.ContractState[i].slice(2);
+                        var buf = new Buffer(20);
+                        buf.write(adr, 0, 'hex');
+                        result.ContractState[i] = KeyPair.__encode(buf)
+                    }
+                });
+            }
 
         }
         if(result.AlethLog){

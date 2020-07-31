@@ -325,7 +325,9 @@ function txnType(tx, account) {
             case 'SignerListSet': //签名列表类
             case 'SetBlackList': //黑名单
             case 'RemoveBlackList': //解除黑名单
-                // TODO to sub-class tx type
+            case 'TokenIssue': //原生721设置发行权限
+            case 'TransferToken': //原生721token流转
+            case 'TokenDel': //原生721token删除
                 return tx.TransactionType.toLowerCase();
             default :
                 // TODO CHECK
@@ -511,8 +513,24 @@ function processTx(txn, account) {
             break;
         case 'setblacklist':
         case 'removeblacklist':
-            result.src = tx.Account;
+            result.code = tx.FundCode;
             result.black = tx.BlackListAccountID;
+            break;
+        case 'tokenissue':
+            result.account = tx.Account;
+            result.publisher = tx.Issuer;
+            result.token = utf8.decode(hexToString(tx.FundCode));
+            result.number = parseInt(tx.TokenSize, 16);
+            break;
+        case 'transfertoken':
+            result.publisher = tx.Account;
+            result.receiver = tx.Destination;
+            result.token = utf8.decode(hexToString(tx.FundCode));
+            result.tokenId = tx.TokenID;
+            break;
+        case 'tokendel':
+            result.publisher = tx.Account;
+            result.tokenId = tx.TokenID;
             break;
         default :
             // TODO parse other type
@@ -530,7 +548,18 @@ function processTx(txn, account) {
             var memo = tx.Memos[m].Memo;
             for (var property in memo) {
                 try {
-                    memo[property] = utf8.decode(hexToString(memo[property]));
+                    if(result.type === 'transfertoken'){
+                        if(property === 'MemoData'){
+                            memo.data = utf8.decode(hexToString(memo['MemoData']));
+                            delete memo['MemoData'];
+                        }else if(property === 'MemoType'){
+                            memo.type = utf8.decode(hexToString(hexToString(memo['MemoType'])));
+                            delete memo['MemoType'];
+                        }
+
+                    } else {
+                        memo[property] = utf8.decode(hexToString(memo[property]));
+                    }
                 } catch (e) {
                     // TODO to unify to utf8
                     memo[property] = memo[property];

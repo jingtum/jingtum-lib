@@ -3,6 +3,7 @@ var Event = require('events').EventEmitter;
 var util = require('util');
 var LRU = require('lru-cache');
 var sha1 = require('sha1');
+var utf8 = require('utf8');
 
 var Server = require('./server');
 var Request = require('./request');
@@ -282,7 +283,7 @@ Remote.prototype._handleResponse = function(data) {
         }
         request && request.callback(null, result);
     } else if (data.status === 'error') {
-        request && request.callback(data.error_message || data.error_exception);
+        request && request.callback(data.error_message || data.error_exception || data.error);
     }
 };
 
@@ -1687,7 +1688,142 @@ Remote.prototype.buildTx = function(tx_json) {//多重签名中通过tx_json创�
     return tx;
 };
 
+Remote.prototype.buildTokenIssueTx = function(options) {
+    var tx = new Transaction(this);
+    if (options === null || typeof options !== 'object') {
+        tx.tx_json.obj = new Error('invalid options type');
+        return tx;
+    }
+    var account =  options.account;
+    var publisher = options.publisher;
+    var token = options.token;
+    var number = options.number;
+    if (!utils.isValidAddress(account)) {
+        tx.tx_json.account = new Error('invalid account address');
+        return tx;
+    }
+    if (!utils.isValidAddress(publisher)) {
+        tx.tx_json.publisher = new Error('invalid publisher address');
+        return tx;
+    }
+    if (isNaN(number) || Number(number) < 0) {
+        tx.tx_json.number = new Error('invalid number, it must be a number and greater than zero');
+        return tx;
+    }
 
+    tx.tx_json.TransactionType = 'TokenIssue';
+    tx.tx_json.Account = account;
+    tx.tx_json.Issuer = publisher;
+    tx.tx_json.FundCode	 = utils.stringToHex(utf8.encode(token));
+    tx.tx_json.TokenSize = Number(number);
+    return tx;
+};
+Remote.prototype.requestTokenIssue = function(options) {
+    var request = new Request(this, 'erc_issue');
+    if (options === null || typeof options !== 'object') {
+        request.message.type = new Error('invalid options type');
+        return request;
+    }
+    var publisher = options.publisher;
+
+    if (!utils.isValidAddress(publisher)) {
+        request.message.account = new Error('publisher is invalid');
+        return request;
+    }
+
+    request.message.account = publisher;
+    request.message.ledger_index = 'validated';
+    return request;
+};
+
+Remote.prototype.buildTransferTokenTx = function(options) {
+    var tx = new Transaction(this);
+    if (options === null || typeof options !== 'object') {
+        tx.tx_json.obj = new Error('invalid options type');
+        return tx;
+    }
+    var publisher = options.publisher;
+    var receiver = options.receiver;
+    var token = options.token;
+    var tokenId = options.tokenId;
+    var memos = options.memos;
+    if (!utils.isValidAddress(receiver)) {
+        tx.tx_json.receiver = new Error('invalid receiver address');
+        return tx;
+    }
+    if (!utils.isValidAddress(publisher)) {
+        tx.tx_json.publisher = new Error('invalid publisher address');
+        return tx;
+    }
+
+    var ms = [];
+    if (Array.isArray(memos) && memos.length > 0) {
+        memos.forEach(function (m) {
+            ms.push({Memo: {MemoType: utils.stringToHex(utf8.encode(m.type)), MemoData: utils.stringToHex(utf8.encode(m.data))}});
+        })
+    }
+
+    tx.tx_json.TransactionType = 'TransferToken';
+    tx.tx_json.Account = publisher;
+    tx.tx_json.Destination = receiver;
+    if(token)
+        tx.tx_json.FundCode	 = utils.stringToHex(utf8.encode(token));
+    if(ms.length > 0)
+        tx.tx_json.Memos = ms;
+    tx.tx_json.TokenID = tokenId;//64位，不足的补零吗？
+
+    return tx;
+};
+Remote.prototype.requestAccountToken = function(options) {
+    var request = new Request(this, 'account_erc');
+    if (options === null || typeof options !== 'object') {
+        request.message.type = new Error('invalid options type');
+        return request;
+    }
+    var account = options.account;
+
+    if (!utils.isValidAddress(account)) {
+        request.message.account = new Error('account is invalid');
+        return request;
+    }
+
+    request.message.account = account;
+    request.message.ledger_index = 'validated';
+    return request;
+};
+Remote.prototype.requestTokenInfo = function(options) {
+    var request = new Request(this, 'erc_info');
+    if (options === null || typeof options !== 'object') {
+        request.message.type = new Error('invalid options type');
+        return request;
+    }
+
+    request.message.tokenid = options.tokenId;
+    request.message.ledger_index = 'validated';
+    return request;
+};
+
+Remote.prototype.buildTokenDelTx = function(options) {
+    var tx = new Transaction(this);
+    if (options === null || typeof options !== 'object') {
+        tx.tx_json.obj = new Error('invalid options type');
+        return tx;
+    }
+
+    var publisher = options.publisher;
+    var tokenId = options.tokenId;
+
+    if (!utils.isValidAddress(publisher)) {
+        tx.tx_json.publisher = new Error('invalid publisher address');
+        return tx;
+    }
+
+    tx.tx_json.TransactionType = 'TokenDel';
+    tx.tx_json.Account = publisher;
+    tx.tx_json.TokenID = tokenId;
+
+    return tx;
+};
 
 module.exports = Remote;
 

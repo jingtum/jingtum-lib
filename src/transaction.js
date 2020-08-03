@@ -311,6 +311,8 @@ function tx_json_filter(tx_json) {//签名时，序列化之前的字段处理
         var memos = tx_json.Memos;
         for(var i = 0; i < memos.length; i++){
             memos[i].Memo.MemoData = utf8.decode(__hexToString(memos[i].Memo.MemoData));
+            if(memos[i].Memo.MemoType)
+                memos[i].Memo.MemoType = utf8.decode(__hexToString(memos[i].Memo.MemoType));
         }
     }
     if(tx_json.SendMax && !isNaN(tx_json.SendMax)){

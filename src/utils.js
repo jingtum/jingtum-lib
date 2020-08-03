@@ -548,18 +548,7 @@ function processTx(txn, account) {
             var memo = tx.Memos[m].Memo;
             for (var property in memo) {
                 try {
-                    if(result.type === 'transfertoken'){
-                        if(property === 'MemoData'){
-                            memo.data = utf8.decode(hexToString(memo['MemoData']));
-                            delete memo['MemoData'];
-                        }else if(property === 'MemoType'){
-                            memo.type = utf8.decode(hexToString(hexToString(memo['MemoType'])));
-                            delete memo['MemoType'];
-                        }
-
-                    } else {
-                        memo[property] = utf8.decode(hexToString(memo[property]));
-                    }
+                    memo[property] = utf8.decode(hexToString(memo[property]));
                 } catch (e) {
                     // TODO to unify to utf8
                     memo[property] = memo[property];
